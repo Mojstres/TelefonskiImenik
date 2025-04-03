@@ -1,83 +1,80 @@
 using System;
+using System.Data;
+using System.Configuration;
 using System.Windows.Forms;
+using MySql.Data.MySqlClient;
 
 namespace TelefonskiImenik
 {
     public partial class MainForm : Form
     {
-        private Label lblKontakt;
-        private Button btnDodaj;
-
         public MainForm()
         {
-            lblKontakt = new Label { Left = 20, Top = 20, Width = 300 };
-            btnDodaj = new Button { Text = "Dodaj", Left = 20, Top = 60, Width = 100 };
-            btnDodaj.Click += btnDodaj_Click;
-
-            this.Controls.Add(lblKontakt);
-            this.Controls.Add(btnDodaj);
-            this.Text = "Telefonski imenik";
-            this.StartPosition = FormStartPosition.CenterScreen;
+            InitializeComponent();
+            LoadContactsFromDatabase();
         }
 
-        private void btnDodaj_Click(object? sender, EventArgs e)
+        // Naloži kontakte iz baze z opcijo filtra po nazivu
+        private void LoadContactsFromDatabase(string filter = "")
         {
-            using (AddContactForm addContactForm = new AddContactForm())
+            DataTable dt = new DataTable();
+            string query = "SELECT naziv AS 'Naziv', stevilka AS 'Tel. Številka' FROM imenik";
+            if (!string.IsNullOrEmpty(filter))
             {
-                if (addContactForm.ShowDialog() == DialogResult.OK)
+                query += " WHERE naziv LIKE @filter";
+            }
+
+            string connString = ConfigurationManager.ConnectionStrings["conn"].ConnectionString;
+            using (MySqlConnection conn = new MySqlConnection(connString))
+            {
+                conn.Open();
+                using (MySqlCommand cmd = new MySqlCommand(query, conn))
                 {
-                    lblKontakt.Text = $"Ime: {addContactForm.ContactName}, Tel: {addContactForm.ContactNumber}";
+                    if (!string.IsNullOrEmpty(filter))
+                    {
+                        cmd.Parameters.AddWithValue("@filter", "%" + filter + "%");
+                    }
+                    using (MySqlDataAdapter adapter = new MySqlDataAdapter(cmd))
+                    {
+                        adapter.Fill(dt);
+                    }
+                }
+            }
+            dgvContacts.DataSource = dt;
+        }
+
+        private void btnSearch_Click(object sender, EventArgs e)
+        {
+            string searchTerm = txtSearch.Text.Trim();
+            LoadContactsFromDatabase(searchTerm);
+        }
+
+        private void btnDodaj_Click(object sender, EventArgs e)
+        {
+            using (AddContactForm addForm = new AddContactForm())
+            {
+                if (addForm.ShowDialog() == DialogResult.OK)
+                {
+                    AddContactToDatabase(addForm.ContactName, addForm.ContactNumber);
+                    LoadContactsFromDatabase();
                 }
             }
         }
-    }
 
-    public partial class AddContactForm : Form
-    {
-        public string ContactName { get; private set; } = string.Empty;
-        public string ContactNumber { get; private set; } = string.Empty;
-
-        private TextBox txtIme;
-        private TextBox txtTelefon;
-        private Button btnShrani;
-        private Label lblIme;
-        private Label lblTelefon;
-
-        public AddContactForm()
+        private void AddContactToDatabase(string naziv, string stevilka)
         {
-            // Ime
-            lblIme = new Label { Text = "Ime", Left = 20, Top = 20, Width = 200 };
-
-            // Telefonska številka
-            lblTelefon = new Label { Text = "Tel. Številka", Left = 20, Top = 80, Width = 200 };
-
-            // Vnosno polje za Ime
-            txtIme = new TextBox { Left = 20, Top = 40, Width = 200 };
-
-            // Vnosno polje za Telefonsko številko
-            txtTelefon = new TextBox { Left = 20, Top = 100, Width = 200 };
-
-            // Shrani gumb
-            btnShrani = new Button { Text = "Shrani", Left = 20, Top = 140, Width = 200 };
-            btnShrani.Click += BtnShrani_Click;
-
-            this.Controls.Add(lblIme);
-            this.Controls.Add(lblTelefon);
-            this.Controls.Add(txtIme);
-            this.Controls.Add(txtTelefon);
-            this.Controls.Add(btnShrani);
-
-            this.Text = "Dodaj Kontakt";
-            this.StartPosition = FormStartPosition.CenterParent;
-            this.FormBorderStyle = FormBorderStyle.FixedDialog;
-        }
-
-        private void BtnShrani_Click(object? sender, EventArgs e)
-        {
-            ContactName = txtIme.Text;
-            ContactNumber = txtTelefon.Text;
-            this.DialogResult = DialogResult.OK;
-            this.Close();
+            string query = "INSERT INTO imenik (naziv, stevilka) VALUES (@naziv, @stevilka)";
+            string connString = ConfigurationManager.ConnectionStrings["conn"].ConnectionString;
+            using (MySqlConnection conn = new MySqlConnection(connString))
+            {
+                conn.Open();
+                using (MySqlCommand cmd = new MySqlCommand(query, conn))
+                {
+                    cmd.Parameters.AddWithValue("@naziv", naziv);
+                    cmd.Parameters.AddWithValue("@stevilka", stevilka);
+                    cmd.ExecuteNonQuery();
+                }
+            }
         }
     }
 }
